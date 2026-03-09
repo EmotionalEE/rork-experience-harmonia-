@@ -150,11 +150,24 @@ export default function WelcomeScreen() {
       }
     } catch (error: any) {
       console.error('[Welcome] Auth error:', error);
-      const errorMessage = error?.message || 'Authentication failed. Please try again.';
-      Alert.alert(
-        activeTab === "signup" ? "Signup Failed" : "Sign In Failed",
-        errorMessage
-      );
+      const rawMessage = error?.message || '';
+      
+      if (activeTab === "signin" && rawMessage.includes('Invalid email or password')) {
+        Alert.alert(
+          "Sign In Failed",
+          "No account found with these credentials. Please check your email and password, or create a new account.",
+          [
+            { text: "Create Account", onPress: () => handleTabChange("signup") },
+            { text: "Try Again", style: "cancel" },
+          ]
+        );
+      } else {
+        const errorMessage = rawMessage || 'Authentication failed. Please try again.';
+        Alert.alert(
+          activeTab === "signup" ? "Signup Failed" : "Sign In Failed",
+          errorMessage
+        );
+      }
     }
   };
 

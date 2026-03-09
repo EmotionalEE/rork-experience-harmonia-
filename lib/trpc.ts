@@ -32,17 +32,44 @@ export const createTRPCClient = () => {
         },
         async fetch(url, options) {
           const response = await globalThis.fetch(url, options);
-          if (!response.ok) {
-            const contentType = response.headers.get('content-type') ?? '';
-            if (contentType.includes('text/html')) {
-              console.error('[tRPC] Server returned HTML instead of JSON. URL:', url, 'Status:', response.status);
-              throw new Error(
-                response.status === 404
-                  ? 'API endpoint not found. The server may be starting up — please try again.'
-                  : `Server error (${response.status}). Please try again later.`
-              );
-            }
+          const contentType = response.headers.get('content-type') ?? '';
+
+          if (contentType.includes('text/html')) {
+            console.error('[tRPC] Server returned HTML instead of JSON. URL:', url, 'Status:', response.status);
+            throw new Error(
+              response.status === 404
+                ? 'API endpoint not found. The server may be starting up — please try again.'
+                : `Server error (${response.status}). Please try again later.`
+            );
           }
+
+          const cloned = response.clone();
+          const text = await cloned.text();
+
+          if (!text || text.trim().length === 0) {
+            console.error('[tRPC] Empty response body. URL:', url, 'Status:', response.status);
+            return new Response(
+              JSON.stringify({ error: { message: 'Empty response from server. Please try again.' } }),
+              {
+                status: response.status || 500,
+                headers: { 'content-type': 'application/json' },
+              }
+            );
+          }
+
+          try {
+            JSON.parse(text);
+          } catch {
+            console.error('[tRPC] Invalid JSON response. URL:', url, 'Body:', text.substring(0, 200));
+            return new Response(
+              JSON.stringify({ error: { message: 'Invalid response from server. Please try again.' } }),
+              {
+                status: 500,
+                headers: { 'content-type': 'application/json' },
+              }
+            );
+          }
+
           return response;
         },
       }),

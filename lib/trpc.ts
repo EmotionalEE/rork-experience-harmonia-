@@ -48,26 +48,14 @@ export const createTRPCClient = () => {
 
           if (!text || text.trim().length === 0) {
             console.error('[tRPC] Empty response body. URL:', url, 'Status:', response.status);
-            return new Response(
-              JSON.stringify({ error: { message: 'Empty response from server. Please try again.' } }),
-              {
-                status: response.status || 500,
-                headers: { 'content-type': 'application/json' },
-              }
-            );
+            throw new Error('Empty response from server. Please try again.');
           }
 
           try {
             JSON.parse(text);
           } catch {
             console.error('[tRPC] Invalid JSON response. URL:', url, 'Body:', text.substring(0, 200));
-            return new Response(
-              JSON.stringify({ error: { message: 'Invalid response from server. Please try again.' } }),
-              {
-                status: 500,
-                headers: { 'content-type': 'application/json' },
-              }
-            );
+            throw new Error('Invalid response from server. Please try again.');
           }
 
           return response;

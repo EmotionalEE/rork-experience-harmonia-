@@ -30,6 +30,21 @@ export const createTRPCClient = () => {
           const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
           return token ? { authorization: `Bearer ${token}` } : {};
         },
+        async fetch(url, options) {
+          const response = await globalThis.fetch(url, options);
+          if (!response.ok) {
+            const contentType = response.headers.get('content-type') ?? '';
+            if (contentType.includes('text/html')) {
+              console.error('[tRPC] Server returned HTML instead of JSON. URL:', url, 'Status:', response.status);
+              throw new Error(
+                response.status === 404
+                  ? 'API endpoint not found. The server may be starting up — please try again.'
+                  : `Server error (${response.status}). Please try again later.`
+              );
+            }
+          }
+          return response;
+        },
       }),
     ],
   });

@@ -32,32 +32,17 @@ export const createTRPCClient = () => {
         },
         async fetch(url, options) {
           const response = await globalThis.fetch(url, options);
-          const contentType = response.headers.get('content-type') ?? '';
-
-          if (contentType.includes('text/html')) {
-            console.error('[tRPC] Server returned HTML instead of JSON. URL:', url, 'Status:', response.status);
-            throw new Error(
-              response.status === 404
-                ? 'API endpoint not found. The server may be starting up — please try again.'
-                : `Server error (${response.status}). Please try again later.`
-            );
+          if (!response.ok) {
+            const contentType = response.headers.get('content-type') ?? '';
+            if (contentType.includes('text/html')) {
+              console.error('[tRPC] Server returned HTML instead of JSON. URL:', url, 'Status:', response.status);
+              throw new Error(
+                response.status === 404
+                  ? 'API endpoint not found. The server may be starting up — please try again.'
+                  : `Server error (${response.status}). Please try again later.`
+              );
+            }
           }
-
-          const cloned = response.clone();
-          const text = await cloned.text();
-
-          if (!text || text.trim().length === 0) {
-            console.error('[tRPC] Empty response body. URL:', url, 'Status:', response.status);
-            throw new Error('Empty response from server. Please try again.');
-          }
-
-          try {
-            JSON.parse(text);
-          } catch {
-            console.error('[tRPC] Invalid JSON response. URL:', url, 'Body:', text.substring(0, 200));
-            throw new Error('Invalid response from server. Please try again.');
-          }
-
           return response;
         },
       }),

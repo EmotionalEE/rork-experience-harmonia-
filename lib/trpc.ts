@@ -31,19 +31,37 @@ export const createTRPCClient = () => {
           return token ? { authorization: `Bearer ${token}` } : {};
         },
         async fetch(url, options) {
-          const response = await globalThis.fetch(url, options);
-          if (!response.ok) {
-            const contentType = response.headers.get('content-type') ?? '';
-            if (contentType.includes('text/html')) {
-              console.error('[tRPC] Server returned HTML instead of JSON. URL:', url, 'Status:', response.status);
-              throw new Error(
-                response.status === 404
-                  ? 'API endpoint not found. The server may be starting up — please try again.'
-                  : `Server error (${response.status}). Please try again later.`
-              );
-            }
+          let response: Response;
+          try {
+            response = await globalThis.fetch(url, options);
+          } catch (networkError) {
+            console.error('[tRPC] Network error:', networkError);
+            throw new Error('Network error. Please check your connection and try again.');
           }
-          return response;
+
+          const contentType = response.headers.get('content-type') ?? '';
+
+          if (contentType.includes('text/html')) {
+            console.error('[tRPC] Server returned HTML instead of JSON. URL:', url, 'Status:', response.status);
+            throw new Error(
+              response.status === 404
+                ? 'API endpoint not found. The server may be starting up — please try again.'
+                : `Server error (${response.status}). Please try again later.`
+            );
+          }
+
+          const text = await response.text();
+
+          if (!text || text.trim().length === 0) {
+            console.error('[tRPC] Empty response body. URL:', url, 'Status:', response.status);
+            throw new Error('Server returned an empty response. Please try again.');
+          }
+
+          return new Response(text, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+          });
         },
       }),
     ],

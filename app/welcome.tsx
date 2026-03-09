@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -97,48 +98,28 @@ export default function WelcomeScreen() {
     console.log("Auth action:", activeTab, { email, password, name, agreeToTerms, marketingOptIn });
     
     if (!email.trim() || !password.trim()) {
-      if (Platform.OS === "web") {
-        if (typeof window !== "undefined") window.alert("Please enter both email and password.");
-      } else {
-        console.log("Email or password missing");
-      }
+      Alert.alert("Missing Fields", "Please enter both email and password.");
       return;
     }
     
     if (activeTab === "signup" && !name.trim()) {
-      if (Platform.OS === "web") {
-        if (typeof window !== "undefined") window.alert("Please enter your name.");
-      } else {
-        console.log("Name missing");
-      }
+      Alert.alert("Missing Fields", "Please enter your name.");
       return;
     }
     
     if (activeTab === "signup" && !agreeToTerms) {
-      if (Platform.OS === "web") {
-        if (typeof window !== "undefined") window.alert("Please agree to the Terms and Conditions to continue.");
-      } else {
-        console.log("Terms not agreed");
-      }
+      Alert.alert("Terms Required", "Please agree to the Terms and Conditions to continue.");
       return;
     }
     
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
-      if (Platform.OS === "web") {
-        if (typeof window !== "undefined") window.alert("Please enter a valid email address.");
-      } else {
-        console.log("Invalid email format");
-      }
+      Alert.alert("Invalid Email", "Please enter a valid email address.");
       return;
     }
     
     if (password.length < 8) {
-      if (Platform.OS === "web") {
-        if (typeof window !== "undefined") window.alert("Password must be at least 8 characters long.");
-      } else {
-        console.log("Password too short");
-      }
+      Alert.alert("Password Too Short", "Password must be at least 8 characters long.");
       return;
     }
     
@@ -170,12 +151,10 @@ export default function WelcomeScreen() {
     } catch (error: any) {
       console.error('[Welcome] Auth error:', error);
       const errorMessage = error?.message || 'Authentication failed. Please try again.';
-      
-      if (Platform.OS === "web") {
-        if (typeof window !== "undefined") window.alert(errorMessage);
-      } else {
-        console.log('Auth error:', errorMessage);
-      }
+      Alert.alert(
+        activeTab === "signup" ? "Signup Failed" : "Sign In Failed",
+        errorMessage
+      );
     }
   };
 

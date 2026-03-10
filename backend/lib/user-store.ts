@@ -11,6 +11,10 @@ function toStr(value: unknown): string {
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return value.toString();
   if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.id === 'string') return obj.id;
+  }
   return JSON.stringify(value);
 }
 
@@ -41,15 +45,20 @@ class UserStore {
         const dbUsers = await dbGetAllUsers();
         console.log('[UserStore] Loading users from DB, found:', dbUsers.length);
         for (const record of dbUsers) {
+          console.log('[UserStore] Raw DB record:', JSON.stringify(record).substring(0, 300));
+          const rawId = record.userId || record.id;
           const user: User = {
-            id: toStr(record.id),
+            id: toStr(rawId),
             email: toStr(record.email),
             passwordHash: toStr(record.passwordHash),
             name: toStr(record.name),
             createdAt: toStr(record.createdAt),
           };
-          if (user.id && user.email) {
+          console.log('[UserStore] Parsed user:', user.email, 'id:', user.id, 'hashLen:', user.passwordHash.length);
+          if (user.id && user.email && user.passwordHash) {
             this.users.set(user.id, user);
+          } else {
+            console.warn('[UserStore] Skipping invalid user record - missing fields:', { id: !!user.id, email: !!user.email, hash: !!user.passwordHash });
           }
         }
         console.log('[UserStore] Loaded', this.users.size, 'users from DB');
@@ -146,23 +155,33 @@ class UserStore {
     let user = Array.from(this.users.values()).find(u => u.email === normalizedEmail);
 
     if (!user && this.dbAvailable) {
-      console.log('[UserStore] User not in memory, checking DB...');
+      console.log('[UserStore] User not in memory, checking DB for:', normalizedEmail);
       const dbUser = await dbFindUserByEmail(normalizedEmail);
       if (dbUser) {
+        console.log('[UserStore] Raw DB user found:', JSON.stringify(dbUser).substring(0, 300));
+        const rawId = dbUser.userId || dbUser.id;
         user = {
-          id: toStr(dbUser.id),
+          id: toStr(rawId),
           email: toStr(dbUser.email),
           passwordHash: toStr(dbUser.passwordHash),
           name: toStr(dbUser.name),
           createdAt: toStr(dbUser.createdAt),
         };
-        this.users.set(user.id, user);
-        console.log('[UserStore] Loaded user from DB:', user.email);
+        if (user.id && user.passwordHash) {
+          this.users.set(user.id, user);
+          console.log('[UserStore] Loaded user from DB:', user.email, 'hashLen:', user.passwordHash.length);
+        } else {
+          console.error('[UserStore] DB user has missing id or passwordHash');
+          user = undefined;
+        }
       }
     }
 
     console.log(`[UserStore] findUserByEmail(${normalizedEmail}): ${user ? 'found' : 'not found'}`);
     console.log(`[UserStore] Total users in store: ${this.users.size}`);
+    if (user) {
+      console.log(`[UserStore] User details - id: ${user.id}, email: ${user.email}, hashLen: ${user.passwordHash.length}, hashStart: ${user.passwordHash.substring(0, 7)}`);
+    }
     return user;
   }
 
@@ -172,7 +191,15 @@ class UserStore {
   }
 
   async verifyPassword(user: User, password: string): Promise<boolean> {
-    return bcrypt.compare(password, user.passwordHash);
+    console.log(`[UserStore] Verifying password for ${user.email}, hashLen: ${user.passwordHash.length}, hashStart: ${user.passwordHash.substring(0, 7)}`);
+    try {
+      const result = await bcrypt.compare(password, user.passwordHash);
+      console.log(`[UserStore] Password verification result: ${result}`);
+      return result;
+    } catch (error) {
+      console.error('[UserStore] Password verification error:', error);
+      return false;
+    }
   }
 
   async getAllUsers(): Promise<User[]> {

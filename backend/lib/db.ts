@@ -72,16 +72,16 @@ export async function dbCreateUser(user: {
   createdAt: string;
 }): Promise<boolean> {
   try {
-    const sql = `CREATE users CONTENT {
-      id: '${escapeString(user.id)}',
-      email: '${escapeString(user.email)}',
-      passwordHash: '${escapeString(user.passwordHash)}',
-      name: '${escapeString(user.name)}',
-      createdAt: '${escapeString(user.createdAt)}'
-    };`;
+    const safeId = escapeString(user.id);
+    const safeEmail = escapeString(user.email);
+    const safeHash = escapeString(user.passwordHash);
+    const safeName = escapeString(user.name);
+    const safeDate = escapeString(user.createdAt);
+
+    const sql = `CREATE users SET userId = '${safeId}', email = '${safeEmail}', passwordHash = '${safeHash}', name = '${safeName}', createdAt = '${safeDate}';`;
 
     const result = await querySql(sql);
-    console.log('[DB] User created in DB:', user.email, 'result:', JSON.stringify(result).substring(0, 100));
+    console.log('[DB] User created in DB:', user.email, 'result:', JSON.stringify(result).substring(0, 200));
     return true;
   } catch (error) {
     console.error('[DB] Failed to create user in DB:', error);
@@ -112,6 +112,9 @@ export async function dbGetAllUsers(): Promise<DbRecord[]> {
     const sql = `SELECT * FROM users;`;
     const results = await querySql(sql);
     console.log('[DB] Loaded', results.length, 'users from DB');
+    if (results.length > 0) {
+      console.log('[DB] Sample user keys:', Object.keys(results[0] as object));
+    }
     return results as DbRecord[];
   } catch (error) {
     console.error('[DB] Failed to load users from DB:', error);

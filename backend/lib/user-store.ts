@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { dbCreateUser, dbFindUserByEmail, dbGetAllUsers, isDbConfigured } from './db';
+import { dbCreateUser, dbDeleteUserByEmail, dbFindUserByEmail, dbGetAllUsers, isDbConfigured } from './db';
 
 const PASSWORD_SALT_ROUNDS = Number(process.env.PASSWORD_SALT_ROUNDS || 10);
 
@@ -113,8 +113,9 @@ class UserStore {
     if (!existingUser && this.dbAvailable) {
       const dbUser = await dbFindUserByEmail(normalizedEmail);
       if (dbUser) {
+        const rawId = dbUser.userId || dbUser.id;
         existingUser = {
-          id: toStr(dbUser.id),
+          id: toStr(rawId),
           email: toStr(dbUser.email),
           passwordHash: toStr(dbUser.passwordHash),
           name: toStr(dbUser.name),
@@ -125,7 +126,14 @@ class UserStore {
     }
 
     if (existingUser) {
-      throw new Error('User with this email already exists');
+      const hashValid = existingUser.passwordHash && existingUser.passwordHash.startsWith('$2');
+      if (!hashValid && this.dbAvailable) {
+        console.warn('[UserStore] Existing user has corrupted hash, deleting and re-creating:', normalizedEmail);
+        this.users.delete(existingUser.id);
+        await dbDeleteUserByEmail(normalizedEmail);
+      } else {
+        throw new Error('User with this email already exists');
+      }
     }
 
     const passwordHash = await bcrypt.hash(password, PASSWORD_SALT_ROUNDS);
@@ -192,6 +200,12 @@ class UserStore {
 
   async verifyPassword(user: User, password: string): Promise<boolean> {
     console.log(`[UserStore] Verifying password for ${user.email}, hashLen: ${user.passwordHash.length}, hashStart: ${user.passwordHash.substring(0, 7)}`);
+    
+    if (!user.passwordHash || !user.passwordHash.startsWith('$2')) {
+      console.error(`[UserStore] Invalid hash format for ${user.email}: starts with '${user.passwordHash.substring(0, 10)}'`);
+      return false;
+    }
+    
     try {
       const result = await bcrypt.compare(password, user.passwordHash);
       console.log(`[UserStore] Password verification result: ${result}`);

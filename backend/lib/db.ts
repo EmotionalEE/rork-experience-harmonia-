@@ -6,9 +6,9 @@ interface DbRecord {
   [key: string]: unknown;
 }
 
-function getHeaders(contentType?: string): Record<string, string> {
+function getHeaders(): Record<string, string> {
   return {
-    'Content-Type': contentType || 'application/json',
+    'Content-Type': 'application/json',
     'Accept': 'application/json',
     'Authorization': `Bearer ${DB_TOKEN}`,
     'surreal-ns': DB_NAMESPACE,
@@ -28,7 +28,7 @@ async function querySql(sql: string): Promise<unknown[]> {
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: getHeaders('application/json'),
+      headers: getHeaders(),
       body: sql,
     });
 
@@ -60,37 +60,6 @@ async function querySql(sql: string): Promise<unknown[]> {
   }
 }
 
-async function restCreateRecord(table: string, data: Record<string, unknown>): Promise<unknown> {
-  if (!DB_ENDPOINT || !DB_TOKEN) {
-    console.warn('[DB] Missing DB configuration, skipping create');
-    return null;
-  }
-
-  const url = `${DB_ENDPOINT}/key/${table}`;
-  console.log('[DB] REST creating record in', table);
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: getHeaders('application/json'),
-      body: JSON.stringify(data),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      console.error('[DB] REST create failed:', response.status, text.substring(0, 300));
-      return null;
-    }
-
-    const result = await response.json();
-    console.log('[DB] REST create result:', JSON.stringify(result).substring(0, 300));
-    return result;
-  } catch (error) {
-    console.error('[DB] REST create error:', error);
-    return null;
-  }
-}
-
 function escapeString(str: string): string {
   return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
@@ -103,34 +72,16 @@ export async function dbCreateUser(user: {
   createdAt: string;
 }): Promise<boolean> {
   try {
-    const record = {
-      userId: user.id,
-      email: user.email,
-      passwordHash: user.passwordHash,
-      name: user.name,
-      createdAt: user.createdAt,
-    };
+    const safeId = escapeString(user.id);
+    const safeEmail = escapeString(user.email);
+    const safeHash = escapeString(user.passwordHash);
+    const safeName = escapeString(user.name);
+    const safeDate = escapeString(user.createdAt);
 
-    console.log('[DB] Creating user via REST API:', user.email, 'hashLen:', user.passwordHash.length);
-    const result = await restCreateRecord('users', record);
-    console.log('[DB] User created in DB:', user.email, 'result:', JSON.stringify(result).substring(0, 300));
+    const sql = `CREATE users SET userId = '${safeId}', email = '${safeEmail}', passwordHash = '${safeHash}', name = '${safeName}', createdAt = '${safeDate}';`;
 
-    const verifyUser = await dbFindUserByEmail(user.email);
-    if (verifyUser) {
-      const rawHash = verifyUser.passwordHash;
-      const storedHash = typeof rawHash === 'string' ? rawHash : JSON.stringify(rawHash) ?? '';
-      if (storedHash === user.passwordHash) {
-        console.log('[DB] Hash verification PASSED for:', user.email);
-      } else {
-        console.error('[DB] Hash verification FAILED for:', user.email,
-          'original length:', user.passwordHash.length,
-          'stored length:', storedHash.length,
-          'original start:', user.passwordHash.substring(0, 10),
-          'stored start:', storedHash.substring(0, 10)
-        );
-      }
-    }
-
+    const result = await querySql(sql);
+    console.log('[DB] User created in DB:', user.email, 'result:', JSON.stringify(result).substring(0, 200));
     return true;
   } catch (error) {
     console.error('[DB] Failed to create user in DB:', error);
@@ -168,18 +119,6 @@ export async function dbGetAllUsers(): Promise<DbRecord[]> {
   } catch (error) {
     console.error('[DB] Failed to load users from DB:', error);
     return [];
-  }
-}
-
-export async function dbDeleteUserByEmail(email: string): Promise<boolean> {
-  try {
-    const sql = `DELETE FROM users WHERE email = '${escapeString(email)}';`;
-    await querySql(sql);
-    console.log('[DB] Deleted user(s) with email:', email);
-    return true;
-  } catch (error) {
-    console.error('[DB] Failed to delete user:', error);
-    return false;
   }
 }
 

@@ -57,10 +57,24 @@ export const createTRPCClient = () => {
             throw new Error('Server returned an empty response. Please try again.');
           }
 
+          // Validate the response is valid JSON before passing to tRPC
+          try {
+            JSON.parse(text);
+          } catch {
+            console.error('[tRPC] Response is not valid JSON. URL:', url, 'Status:', response.status, 'Body:', text.substring(0, 200));
+            throw new Error(
+              response.ok
+                ? 'Server returned an invalid response. Please try again.'
+                : `Server error (${response.status}). Please try again later.`
+            );
+          }
+
           return new Response(text, {
             status: response.status,
             statusText: response.statusText,
-            headers: response.headers,
+            headers: new Headers({
+              'content-type': 'application/json',
+            }),
           });
         },
       }),

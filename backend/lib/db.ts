@@ -1,127 +1,80 @@
-const DB_ENDPOINT = process.env.EXPO_PUBLIC_RORK_DB_ENDPOINT || '';
-const DB_NAMESPACE = process.env.EXPO_PUBLIC_RORK_DB_NAMESPACE || '';
-const DB_TOKEN = process.env.EXPO_PUBLIC_RORK_DB_TOKEN || '';
+import { getStore } from '@netlify/blobs';
 
-interface DbRecord {
-  [key: string]: unknown;
-}
-
-function getHeaders(): Record<string, string> {
-  return {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'Authorization': `Bearer ${DB_TOKEN}`,
-    'surreal-ns': DB_NAMESPACE,
-    'surreal-db': 'main',
-  };
-}
-
-async function querySql(sql: string): Promise<unknown[]> {
-  if (!DB_ENDPOINT || !DB_TOKEN) {
-    console.warn('[DB] Missing DB configuration, skipping query');
-    return [];
-  }
-
-  const url = `${DB_ENDPOINT}/sql`;
-  console.log('[DB] Executing query:', sql.substring(0, 100));
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: sql,
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      console.error('[DB] Query failed:', response.status, text.substring(0, 200));
-      return [];
-    }
-
-    const data = await response.json();
-    console.log('[DB] Query result:', JSON.stringify(data).substring(0, 200));
-
-    if (Array.isArray(data)) {
-      const results: unknown[] = [];
-      for (const entry of data) {
-        if (entry?.result && Array.isArray(entry.result)) {
-          results.push(...entry.result);
-        } else if (entry?.result) {
-          results.push(entry.result);
-        }
-      }
-      return results;
-    }
-
-    return [];
-  } catch (error) {
-    console.error('[DB] Query error:', error);
-    return [];
-  }
-}
-
-function escapeString(str: string): string {
-  return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-}
-
-export async function dbCreateUser(user: {
+interface StoredUser {
   id: string;
   email: string;
   passwordHash: string;
   name: string;
   createdAt: string;
-}): Promise<boolean> {
+}
+
+function getUserStore() {
+  return getStore({ name: 'users', consistency: 'strong' });
+}
+
+export async function dbCreateUser(user: StoredUser): Promise<boolean> {
   try {
-    const safeId = escapeString(user.id);
-    const safeEmail = escapeString(user.email);
-    const safeHash = escapeString(user.passwordHash);
-    const safeName = escapeString(user.name);
-    const safeDate = escapeString(user.createdAt);
-
-    const sql = `CREATE users SET userId = '${safeId}', email = '${safeEmail}', passwordHash = '${safeHash}', name = '${safeName}', createdAt = '${safeDate}';`;
-
-    const result = await querySql(sql);
-    console.log('[DB] User created in DB:', user.email, 'result:', JSON.stringify(result).substring(0, 200));
+    const store = getUserStore();
+    // Store by email (primary lookup key) and by ID (secondary)
+    await store.setJSON(`email:${user.email}`, user);
+    await store.set(`id:${user.id}`, user.email);
+    console.log('[DB] User saved to Netlify Blobs:', user.email);
     return true;
   } catch (error) {
-    console.error('[DB] Failed to create user in DB:', error);
+    console.error('[DB] Failed to save user:', error);
     return false;
   }
 }
 
-export async function dbFindUserByEmail(email: string): Promise<DbRecord | null> {
+export async function dbFindUserByEmail(email: string): Promise<StoredUser | null> {
   try {
-    const sql = `SELECT * FROM users WHERE email = '${escapeString(email)}';`;
-    const results = await querySql(sql);
-
-    if (results.length > 0) {
-      console.log('[DB] Found user in DB:', email);
-      return results[0] as DbRecord;
+    const store = getUserStore();
+    const user = await store.get(`email:${email}`, { type: 'json' }) as StoredUser | null;
+    if (user) {
+      console.log('[DB] Found user in Blobs:', email);
+      return user;
     }
-
-    console.log('[DB] User not found in DB:', email);
+    console.log('[DB] User not found in Blobs:', email);
     return null;
   } catch (error) {
-    console.error('[DB] Failed to find user in DB:', error);
+    console.error('[DB] Failed to find user:', error);
     return null;
   }
 }
 
-export async function dbGetAllUsers(): Promise<DbRecord[]> {
+export async function dbFindUserById(id: string): Promise<StoredUser | null> {
   try {
-    const sql = `SELECT * FROM users;`;
-    const results = await querySql(sql);
-    console.log('[DB] Loaded', results.length, 'users from DB');
-    if (results.length > 0) {
-      console.log('[DB] Sample user keys:', Object.keys(results[0] as object));
+    const store = getUserStore();
+    const email = await store.get(`id:${id}`, { type: 'text' });
+    if (!email) {
+      return null;
     }
-    return results as DbRecord[];
+    return dbFindUserByEmail(email);
   } catch (error) {
-    console.error('[DB] Failed to load users from DB:', error);
+    console.error('[DB] Failed to find user by ID:', error);
+    return null;
+  }
+}
+
+export async function dbGetAllUsers(): Promise<StoredUser[]> {
+  try {
+    const store = getUserStore();
+    const { blobs } = await store.list({ prefix: 'email:' });
+    const users: StoredUser[] = [];
+    for (const blob of blobs) {
+      const user = await store.get(blob.key, { type: 'json' }) as StoredUser | null;
+      if (user) {
+        users.push(user);
+      }
+    }
+    console.log('[DB] Loaded', users.length, 'users from Netlify Blobs');
+    return users;
+  } catch (error) {
+    console.error('[DB] Failed to load users:', error);
     return [];
   }
 }
 
 export function isDbConfigured(): boolean {
-  return !!(DB_ENDPOINT && DB_TOKEN && DB_NAMESPACE);
+  return true;
 }

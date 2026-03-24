@@ -15,10 +15,16 @@ const app = new Hono();
 
 app.use("*", cors());
 
-app.all("/api/trpc/*", async (c) => {
+app.use("*", async (c, next) => {
+  console.log(`[Hono] Incoming request: ${c.req.method} ${c.req.path} (URL: ${c.req.url})`);
+  await next();
+});
+
+app.all("/trpc/*", async (c) => {
+  console.log(`[tRPC] Matched route. Path: ${c.req.path}`);
   try {
     const response = await fetchRequestHandler({
-      endpoint: "/api/trpc",
+      endpoint: "/trpc",
       req: c.req.raw,
       router: appRouter,
       createContext,

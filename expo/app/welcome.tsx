@@ -16,7 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useUserProgress } from "@/providers/UserProgressProvider";
 import { useAuth } from "@/providers/AuthProvider";
-import { trpc } from "@/lib/trpc";
+import { signup, signin } from "@/lib/local-auth";
 import { Mail, Lock, User as UserIcon, Check, Eye, EyeOff } from "lucide-react-native";
 import { harmoniaColors } from "@/constants/colors";
 import { Image } from "expo-image";
@@ -29,8 +29,7 @@ export default function WelcomeScreen() {
   const { completeWelcome } = useUserProgress();
   const { setAuth } = useAuth();
   
-  const signupMutation = trpc.auth.signup.useMutation();
-  const signinMutation = trpc.auth.signin.useMutation();
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<AuthTab>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -123,14 +122,11 @@ export default function WelcomeScreen() {
       return;
     }
     
+    setIsAuthLoading(true);
     try {
       if (activeTab === "signup") {
         console.log('[Welcome] Attempting signup...');
-        const result = await signupMutation.mutateAsync({
-          email: email.trim(),
-          password,
-          name: name.trim(),
-        });
+        const result = await signup(email.trim(), password, name.trim());
         
         console.log('[Welcome] Signup successful');
         await setAuth(result.token, result.user);
@@ -138,10 +134,7 @@ export default function WelcomeScreen() {
         router.replace("/onboarding" as any);
       } else {
         console.log('[Welcome] Attempting signin...');
-        const result = await signinMutation.mutateAsync({
-          email: email.trim(),
-          password,
-        });
+        const result = await signin(email.trim(), password);
         
         console.log('[Welcome] Signin successful');
         await setAuth(result.token, result.user);
@@ -168,6 +161,8 @@ export default function WelcomeScreen() {
           errorMessage
         );
       }
+    } finally {
+      setIsAuthLoading(false);
     }
   };
 
@@ -382,10 +377,10 @@ export default function WelcomeScreen() {
                 )}
 
                 <TouchableOpacity
-                  style={[styles.authButton, (activeTab === 'signup' && !agreeToTerms) || signupMutation.isPending || signinMutation.isPending ? styles.authButtonDisabled : undefined]}
+                  style={[styles.authButton, (activeTab === 'signup' && !agreeToTerms) || isAuthLoading ? styles.authButtonDisabled : undefined]}
                   onPress={handleAuth}
                   activeOpacity={0.85}
-                  disabled={(activeTab === 'signup' && !agreeToTerms) || signupMutation.isPending || signinMutation.isPending}
+                  disabled={(activeTab === 'signup' && !agreeToTerms) || isAuthLoading}
                 >
                   <LinearGradient
                     colors={[harmoniaColors.purple, harmoniaColors.violet]}
@@ -394,7 +389,7 @@ export default function WelcomeScreen() {
                     end={{ x: 1, y: 0.5 }}
                   >
                     <Text style={styles.authButtonText}>
-                      {signupMutation.isPending || signinMutation.isPending
+                      {isAuthLoading
                         ? "Loading..."
                         : activeTab === "signin" 
                         ? "Sign In" 

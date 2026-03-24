@@ -10,6 +10,7 @@ import { JournalProvider } from "@/providers/JournalProvider";
 import { UserProgressProvider } from "@/providers/UserProgressProvider";
 import { VibroacousticProvider } from "@/providers/VibroacousticProvider";
 import { trpc, trpcClient } from "@/lib/trpc";
+import "@/lib/firebase";
 
 if (Platform.OS !== "web") {
   try {
